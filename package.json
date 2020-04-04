@@ -4,17 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "parcel build index.html"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "parcel-bundler": "^1.12.4",
     "stylus": "^0.54.7",
     "stylus-loader": "^3.0.2"
   },
   "dependencies": {
     "cannon": "^0.6.2",
+    "cssnano": "^4.1.10",
     "defaults.css": "^1.2.0",
     "three": "^0.112.0"
   }
