@@ -1,0 +1,21 @@
+{
+  "name": "bang-3d-intro",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "stylus": "^0.54.7",
+    "stylus-loader": "^3.0.2"
+  },
+  "dependencies": {
+    "cannon": "^0.6.2",
+    "defaults.css": "^1.2.0",
+    "three": "^0.112.0"
+  }
+}
