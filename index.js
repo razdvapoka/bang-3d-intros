@@ -5,6 +5,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import modelUrl from "./models/objects-clear.glb";
 
+var DEBUG = false;
+
 var scene;
 var camera;
 var renderer;
@@ -45,20 +47,19 @@ function initCannon() {
   world.solver.iterations = 10;
 
   bodies = cubes.map(cube => {
-    console.log(cube);
-    //const s1 = new THREE.Vector3();
     const s2 = new THREE.Vector3();
-    //cube.geometry.boundingBox.getSize(s1);
     const b = new THREE.BoxHelper(cube, 0xff0000);
     b.geometry.computeBoundingBox();
     b.geometry.boundingBox.getSize(s2);
-    console.log(s2);
-    // scene.add(b);
+    if (DEBUG) {
+      scene.add(b);
+    }
     const size = s2.divideScalar(2);
     const shape = new CANNON.Box(new CANNON.Vec3(size.x, size.y, size.z));
     const body = new CANNON.Body({
       mass: 100,
-      position: cube.position
+      position: cube.position,
+      quaternion: cube.quaternion
     });
     body.addShape(shape);
     body.angularVelocity.set(0, Math.random() > 0.5 ? 10 : -10, 0);
@@ -101,18 +102,11 @@ function updateTextureEncoding() {
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
-  /*
-  camera.left = window.innerWidth / -2;
-  camera.right = window.innerWidth / 2;
-  camera.top = window.innerHeight / 2;
-  camera.bottom = window.innerHeight / -2;
-  */
   camera.updateProjectionMatrix();
-
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function initPlaneMesh(position, width, height, color = 0x777777) {
+function createPlaneMesh(position, width, height, color = 0x777777) {
   const geometry = new THREE.PlaneGeometry(width, height);
   const material = new THREE.MeshLambertMaterial({ color });
   material.side = THREE.DoubleSide;
@@ -125,7 +119,7 @@ function initPlanes() {
   const box = boundingBox.geometry.boundingBox;
 
   // bottom
-  const bottom = initPlaneMesh(
+  const bottom = createPlaneMesh(
     new THREE.Vector3(0, box.min.y - (Math.abs(box.min.y) + Math.abs(box.max.y)) * 0.05, 0),
     Math.abs(box.min.x) + Math.abs(box.max.x),
     Math.abs(box.min.z) + Math.abs(box.max.z)
@@ -134,7 +128,7 @@ function initPlanes() {
   boundingPlanes.push(bottom);
 
   // left
-  const left = initPlaneMesh(
+  const left = createPlaneMesh(
     new THREE.Vector3(box.min.x - (Math.abs(box.min.x) + Math.abs(box.max.x)) * 0.05, 0, 0),
     Math.abs(box.min.y) + Math.abs(box.max.y),
     Math.abs(box.min.z) + Math.abs(box.max.z)
@@ -143,7 +137,7 @@ function initPlanes() {
   boundingPlanes.push(left);
 
   // right
-  const right = initPlaneMesh(
+  const right = createPlaneMesh(
     new THREE.Vector3(box.max.x + (Math.abs(box.min.x) + Math.abs(box.max.x)) * 0.05, 0, 0),
     Math.abs(box.min.y) + Math.abs(box.max.y),
     Math.abs(box.min.z) + Math.abs(box.max.z)
@@ -152,7 +146,7 @@ function initPlanes() {
   boundingPlanes.push(right);
 
   // top
-  const top = initPlaneMesh(
+  const top = createPlaneMesh(
     new THREE.Vector3(0, box.max.y + (Math.abs(box.min.y) + Math.abs(box.max.y)) * 0.05, 0),
     Math.abs(box.min.x) + Math.abs(box.max.x),
     Math.abs(box.min.z) + Math.abs(box.max.z)
@@ -161,8 +155,8 @@ function initPlanes() {
   boundingPlanes.push(top);
 
   // front
-  const front = initPlaneMesh(
-    new THREE.Vector3(0, 0, box.max.z + (Math.abs(box.min.z) + Math.abs(box.max.z)) * 0.05, 0),
+  const front = createPlaneMesh(
+    new THREE.Vector3(0, 0, box.max.z + (Math.abs(box.min.z) + Math.abs(box.max.z)) * 0.5, 0),
     Math.abs(box.min.x) + Math.abs(box.max.x),
     Math.abs(box.min.y) + Math.abs(box.max.y),
     0xffffff
@@ -171,8 +165,8 @@ function initPlanes() {
   boundingPlanes.push(front);
 
   // back
-  const back = initPlaneMesh(
-    new THREE.Vector3(0, 0, box.min.z - (Math.abs(box.min.z) + Math.abs(box.max.z)) * 0.05, 0),
+  const back = createPlaneMesh(
+    new THREE.Vector3(0, 0, box.min.z - (Math.abs(box.min.z) + Math.abs(box.max.z)) * 0.5, 0),
     Math.abs(box.min.x) + Math.abs(box.max.x),
     Math.abs(box.min.y) + Math.abs(box.max.y),
     0xffffff
@@ -183,12 +177,20 @@ function initPlanes() {
   boundingPlanes.forEach(p => {
     p.scale.set(1.1, 1.1, 1.1);
   });
+
+  if (DEBUG) {
+    boundingPlanes.slice(0, 4).forEach(p => {
+      scene.add(p);
+    });
+  }
 }
 
 function initScene() {
   scene = new THREE.Scene();
-  const axesHelper = new THREE.AxesHelper(5000);
-  //scene.add(axesHelper);
+  if (DEBUG) {
+    const axesHelper = new THREE.AxesHelper(5000);
+    scene.add(axesHelper);
+  }
 }
 
 function initRenderer() {
@@ -214,8 +216,8 @@ function loadModel() {
   loader.load(modelUrl, function(gltf) {
     const object = gltf.scene;
     content = object;
-    cubes = object.children; //.filter(child => child.name.startsWith("Cube"));
-
+    object.children = object.children.filter(child => !child.name.startsWith("Cylinder"));
+    cubes = object.children;
     const box = new THREE.Box3().setFromObject(object);
     const size = box.getSize(new THREE.Vector3()).length();
     const center = box.getCenter(new THREE.Vector3());
@@ -229,10 +231,8 @@ function loadModel() {
     camera.updateProjectionMatrix();
 
     camera.position.copy(center);
-    //camera.position.x += size / 2.0;
-    camera.position.y = 0; // += size / 5.0;
+    camera.position.y = 0;
     camera.position.z += size / 1.5;
-    // camera.lookAt(center);
 
     content.traverse(node => {
       if (node.isLight) {
@@ -247,7 +247,9 @@ function loadModel() {
     scene.add(gltf.scene);
 
     boundingBox = new THREE.BoxHelper(gltf.scene, 0xff0000);
-    // scene.add(boundingBox);
+    if (DEBUG) {
+      scene.add(boundingBox);
+    }
     boundingBox.geometry.computeBoundingBox();
 
     initPlanes();
@@ -268,17 +270,7 @@ function initLights() {
 }
 
 function initCamera() {
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
-  /*
-  camera = new THREE.OrthographicCamera(
-    window.innerWidth / -2,
-    window.innerWidth / 2,
-    window.innerHeight / 2,
-    window.innerHeight / -2,
-    1,
-    1000
-  );
-  */
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
   camera.add(light1);
   camera.add(light2);
   scene.add(camera);
@@ -303,13 +295,12 @@ function onMouseMove(e) {
 }
 
 function updatePhysics() {
-  // Step the physics world
   world.step(timeStep);
   bodies.forEach((body, index) => {
     cubes[index].position.copy(body.position);
     cubes[index].quaternion.copy(body.quaternion);
   });
-  world.gravity.set(1000 * mx, 1000 * my, 0);
+  world.gravity.set(10000 * mx, 10000 * my, 0);
 }
 
 function render() {
