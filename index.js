@@ -2,289 +2,107 @@ import "defaults.css";
 import * as THREE from "three";
 import * as CANNON from "cannon";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import modelUrl from "./models/b.glb";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import modelUrl from "./models/objects-clear.glb";
 
-var DEBUG = false;
+let camera;
+let renderer;
+let scene;
+let controls;
+let world;
+let objects = [];
+let walls = [];
+let bodies = [];
+let wallBodies = [];
+let mx = 0;
+let my = 0;
 
-var scene;
-var camera;
-var renderer;
-var controls;
-var content;
-var light1;
-var light2;
+const DEBUG = false;
+const FACTOR = 70;
+const CUBE_SIZE = 10;
+const ROOM_DEPTH = 20;
+const WALL_WIDTH = 0.01;
+const SCALE_COEFF = 0.002;
+const TIME_STEP = 1 / 60;
+const GRAVITY_COEFF = 100;
+const VELOCITY_COEFF = 20;
 
-var mx = 0;
-var my = 0;
-
-var boundingBox;
-var boundingPlanes = [];
-
-var cubes;
-var bodies;
-
-var world,
-  mass,
-  shape,
-  timeStep = 1 / 60;
-
-var state = {
-  // Lights
-  exposure: 1.0,
-  textureEncoding: "sRGB",
-  ambientIntensity: 0.3,
-  ambientColor: 0xffffff,
-  directIntensity: 0.8 * Math.PI, // TODO(#116)
-  directColor: 0xffffff,
-  addLights: true
-};
-
-function initCannon() {
-  world = new CANNON.World();
-  world.gravity.set(0, 0, 0);
-  world.broadphase = new CANNON.NaiveBroadphase();
-  world.solver.iterations = 10;
-
-  bodies = cubes.map(cube => {
-    const s2 = new THREE.Vector3();
-    const b = new THREE.BoxHelper(cube, 0xff0000);
-    b.geometry.computeBoundingBox();
-    b.geometry.boundingBox.getSize(s2);
-    if (DEBUG) {
-      scene.add(b);
-    }
-    const size = s2.divideScalar(2);
-    const shape = new CANNON.Box(new CANNON.Vec3(size.x, size.y, size.z));
-    const body = new CANNON.Body({
-      mass: 100,
-      position: cube.position,
-      quaternion: cube.quaternion
-    });
-    body.addShape(shape);
-    body.angularVelocity.set(0, Math.random() > 0.5 ? 10 : -10, 0);
-    body.angularDamping = 0.5;
-    return body;
-  });
-
-  bodies.forEach(body => {
-    world.addBody(body);
-  });
-
-  boundingPlanes.forEach(plane => {
-    const planeShape = new CANNON.Plane();
-    const planeBody = new CANNON.Body({
-      mass: 0,
-      position: plane.position,
-      quaternion: plane.quaternion
-    });
-    planeBody.addShape(planeShape);
-    world.addBody(planeBody);
-  });
-}
-
-function traverseMaterials(object, callback) {
-  object.traverse(node => {
-    if (!node.isMesh) return;
-    const materials = Array.isArray(node.material) ? node.material : [node.material];
-    materials.forEach(callback);
-  });
-}
-
-function updateTextureEncoding() {
-  const encoding = state.textureEncoding === "sRGB" ? THREE.sRGBEncoding : THREE.LinearEncoding;
-  traverseMaterials(content, material => {
-    if (material.map) material.map.encoding = encoding;
-    if (material.emissiveMap) material.emissiveMap.encoding = encoding;
-    if (material.map || material.emissiveMap) material.needsUpdate = true;
-  });
-}
-
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function initCamera() {
+  camera = new THREE.OrthographicCamera(
+    window.innerWidth / -FACTOR,
+    window.innerWidth / FACTOR,
+    window.innerHeight / FACTOR,
+    window.innerHeight / -FACTOR,
+    -1000,
+    1000
+  );
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function createPlaneMesh(position, width, height, color = 0x777777) {
-  const geometry = new THREE.PlaneGeometry(width, height);
-  const material = new THREE.MeshLambertMaterial({ color });
-  material.side = THREE.DoubleSide;
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.copy(position);
-  return mesh;
-}
-
-function initPlanes() {
-  const box = boundingBox.geometry.boundingBox;
-
-  // bottom
-  const bottom = createPlaneMesh(
-    new THREE.Vector3(0, box.min.y - (Math.abs(box.min.y) + Math.abs(box.max.y)) * 0.05, 0),
-    Math.abs(box.min.x) + Math.abs(box.max.x),
-    Math.abs(box.min.z) + Math.abs(box.max.z)
-  );
-  bottom.rotateX(-Math.PI / 2);
-  boundingPlanes.push(bottom);
-
-  // left
-  const left = createPlaneMesh(
-    new THREE.Vector3(box.min.x - (Math.abs(box.min.x) + Math.abs(box.max.x)) * 0.05, 0, 0),
-    Math.abs(box.min.y) + Math.abs(box.max.y),
-    Math.abs(box.min.z) + Math.abs(box.max.z)
-  );
-  left.rotateY(Math.PI / 2).rotateZ(Math.PI / 2);
-  boundingPlanes.push(left);
-
-  // right
-  const right = createPlaneMesh(
-    new THREE.Vector3(box.max.x + (Math.abs(box.min.x) + Math.abs(box.max.x)) * 0.05, 0, 0),
-    Math.abs(box.min.y) + Math.abs(box.max.y),
-    Math.abs(box.min.z) + Math.abs(box.max.z)
-  );
-  right.rotateY(-Math.PI / 2).rotateZ(-Math.PI / 2);
-  boundingPlanes.push(right);
-
-  // top
-  const top = createPlaneMesh(
-    new THREE.Vector3(0, box.max.y + (Math.abs(box.min.y) + Math.abs(box.max.y)) * 0.05, 0),
-    Math.abs(box.min.x) + Math.abs(box.max.x),
-    Math.abs(box.min.z) + Math.abs(box.max.z)
-  );
-  top.rotateX(Math.PI / 2);
-  boundingPlanes.push(top);
-
-  // front
-  const front = createPlaneMesh(
-    new THREE.Vector3(0, 0, box.max.z + (Math.abs(box.min.z) + Math.abs(box.max.z)) * 0.5, 0),
-    Math.abs(box.min.x) + Math.abs(box.max.x),
-    Math.abs(box.min.y) + Math.abs(box.max.y),
-    0xffffff
-  );
-  front.rotateX(-Math.PI);
-  boundingPlanes.push(front);
-
-  // back
-  const back = createPlaneMesh(
-    new THREE.Vector3(0, 0, box.min.z - (Math.abs(box.min.z) + Math.abs(box.max.z)) * 0.5, 0),
-    Math.abs(box.min.x) + Math.abs(box.max.x),
-    Math.abs(box.min.y) + Math.abs(box.max.y),
-    0xffffff
-  );
-
-  boundingPlanes.push(back);
-
-  boundingPlanes.forEach(p => {
-    p.scale.set(1.1, 1.1, 1.1);
+function initRenderer() {
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    logarithmicDepthBuffer: false
   });
+  renderer.setClearColor(0xffffff);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+}
 
+function initControls() {
   if (DEBUG) {
-    boundingPlanes.slice(0, 4).forEach(p => {
-      scene.add(p);
-    });
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, -10);
+    controls.update();
   }
 }
 
 function initScene() {
   scene = new THREE.Scene();
+  scene.background = new THREE.Color(DEBUG ? 0xffffff : 0x000000);
+  var ambient = new THREE.AmbientLight(0xffffff, 0.9);
+  scene.add(ambient);
+  var directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
+  directionalLight.position.set(-1000, -1000, 250);
+  directionalLight.castShadow = true;
+  scene.add(directionalLight);
   if (DEBUG) {
     const axesHelper = new THREE.AxesHelper(5000);
     scene.add(axesHelper);
   }
 }
 
-function initRenderer() {
-  renderer = new THREE.WebGLRenderer();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.physicallyCorrectLights = true;
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.setClearColor(0xffffff);
-  renderer.setPixelRatio(window.devicePixelRatio);
-  document.body.appendChild(renderer.domElement);
-  renderer.toneMappingExposure = 1.0;
+function initObjects() {
+  for (let i = 0; i < 5; i++) {
+    const cubeGeo =
+      i % 2 === 0
+        ? new THREE.BoxBufferGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE)
+        : new THREE.SphereBufferGeometry(CUBE_SIZE / 2, CUBE_SIZE / 2, CUBE_SIZE / 2);
+    const cubeMat = new THREE.MeshPhongMaterial({ color: "#8AC" });
+    const mesh = new THREE.Mesh(cubeGeo, cubeMat);
+    mesh.position.set(0, 0, (i + 1) * (CUBE_SIZE + 5));
+    scene.add(mesh);
+    objects.push(mesh);
+  }
 }
 
-function initControls() {
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.autoRotate = false;
-  controls.autoRotateSpeed = -10;
-  controls.screenSpacePanning = true;
-}
-
-function loadModel() {
-  var loader = new GLTFLoader();
-  loader.load(modelUrl, function(gltf) {
-    const object = gltf.scene;
-    content = object;
-    object.children = object.children.filter(child => !child.name.startsWith("Cylinder"));
-    cubes = object.children;
-    const box = new THREE.Box3().setFromObject(object);
-    const size = box.getSize(new THREE.Vector3()).length();
-    const center = box.getCenter(new THREE.Vector3());
-
-    object.position.x += object.position.x - center.x;
-    object.position.y += object.position.y - center.y;
-    object.position.z += object.position.z - center.z;
-    controls.maxDistance = size * 10;
-    camera.near = size / 100;
-    camera.far = size * 100;
-    camera.updateProjectionMatrix();
-
-    camera.position.copy(center);
-    camera.position.y = 0;
-    camera.position.z += size / 1.5;
-
-    content.traverse(node => {
-      if (node.isLight) {
-        state.addLights = false;
-      } else if (node.isMesh) {
-        // TODO(https://github.com/mrdoob/three.js/pull/18235): Clean up.
-        node.material.depthWrite = !node.material.transparent;
-      }
-    });
-
-    updateTextureEncoding();
-    scene.add(gltf.scene);
-
-    boundingBox = new THREE.BoxHelper(gltf.scene, 0xff0000);
-    if (DEBUG) {
-      scene.add(boundingBox);
-    }
-    boundingBox.geometry.computeBoundingBox();
-
-    initPlanes();
-    initCannon();
-
-    render();
+function updateCannonWalls() {
+  walls.forEach((wall, wallIndex) => {
+    const wallBody = wallBodies[wallIndex];
+    wallBody.position.copy(wall.position);
   });
 }
 
-function initLights() {
-  light1 = new THREE.AmbientLight(state.ambientColor, state.ambientIntensity);
-  light1.name = "ambient_light";
-
-  light2 = new THREE.DirectionalLight(state.directColor, state.directIntensity);
-  light2.position.set(0.5, 0, 0.866); // ~60º
-  light2.name = "main_light";
-  return [light1, light2];
-}
-
-function initCamera() {
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
-  camera.add(light1);
-  camera.add(light2);
-  scene.add(camera);
-}
-
-function init() {
-  initScene();
-  initLights();
-  initCamera();
-  initRenderer();
-  loadModel();
-  initControls();
-  window.addEventListener("resize", onWindowResize, false);
-  window.addEventListener("mousemove", onMouseMove, false);
+function onWindowResize() {
+  camera.left = window.innerWidth / -FACTOR;
+  camera.right = window.innerWidth / FACTOR;
+  camera.top = window.innerHeight / FACTOR;
+  camera.bottom = window.innerHeight / -FACTOR;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  initWalls();
+  updateCannonWalls();
 }
 
 function onMouseMove(e) {
@@ -294,20 +112,195 @@ function onMouseMove(e) {
   my = -y;
 }
 
-function updatePhysics() {
-  world.step(timeStep);
-  bodies.forEach((body, index) => {
-    cubes[index].position.copy(body.position);
-    cubes[index].quaternion.copy(body.quaternion);
+function initEventListeners() {
+  window.addEventListener("resize", onWindowResize);
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("click", onClick);
+}
+
+function initWall(width, height, position) {
+  var geometry = new THREE.BoxBufferGeometry(width, height, WALL_WIDTH);
+  const material = new THREE.MeshPhongMaterial({
+    color: 0x00ffff,
+    opacity: 0.5,
+    transparent: true,
+    side: THREE.DoubleSide
   });
-  world.gravity.set(10000 * mx, 10000 * my, 0);
+  var wall = new THREE.Mesh(geometry, material);
+  wall.position.copy(position);
+  return wall;
+}
+
+function initWalls() {
+  walls.forEach(wall => {
+    scene.remove(wall);
+    wall.geometry.dispose();
+    wall.material.dispose();
+  });
+  walls = [];
+
+  // bottom
+
+  const bottom = initWall(
+    (window.innerWidth / FACTOR) * 2,
+    ROOM_DEPTH,
+    new THREE.Vector3(0, -(window.innerHeight / FACTOR) + WALL_WIDTH / 2, 0)
+  );
+  bottom.rotateX(-Math.PI / 2);
+  walls.push(bottom);
+
+  // left
+
+  const left = initWall(
+    (window.innerHeight / FACTOR) * 2,
+    ROOM_DEPTH,
+    new THREE.Vector3(window.innerWidth / -FACTOR + WALL_WIDTH / 2, 0, 0)
+  );
+  left.rotateZ(Math.PI / 2).rotateX(Math.PI / 2);
+  walls.push(left);
+
+  // right
+
+  const right = initWall(
+    (window.innerHeight / FACTOR) * 2,
+    ROOM_DEPTH,
+    new THREE.Vector3(window.innerWidth / FACTOR - WALL_WIDTH / 2, 0, 0)
+  );
+  right.rotateZ(-Math.PI / 2).rotateX(Math.PI / 2);
+  walls.push(right);
+
+  // top
+
+  const top = initWall(
+    (window.innerWidth / FACTOR) * 2,
+    ROOM_DEPTH,
+    new THREE.Vector3(0, window.innerHeight / FACTOR - WALL_WIDTH / 2, 0)
+  );
+  top.rotateX(Math.PI / 2);
+  walls.push(top);
+
+  // back
+
+  const back = initWall(
+    (window.innerWidth / FACTOR) * 2,
+    (window.innerHeight / FACTOR) * 2,
+    new THREE.Vector3(0, 0, -ROOM_DEPTH / 2)
+  );
+  walls.push(back);
+
+  const front = initWall(
+    (window.innerWidth / FACTOR) * 2,
+    (window.innerHeight / FACTOR) * 2,
+    new THREE.Vector3(0, 0, ROOM_DEPTH / 2)
+  );
+  front.rotateX(Math.PI);
+  walls.push(front);
+
+  if (DEBUG) {
+    walls.forEach(wall => scene.add(wall));
+  }
+}
+
+function loadModel() {
+  return new Promise(resolve => {
+    var loader = new GLTFLoader();
+    loader.load(modelUrl, function(gltf) {
+      for (let i = 0; i < 15; i++) {
+        const letter = gltf.scene.children[1].clone();
+        const letterBox = new THREE.Box3().setFromObject(letter);
+        const letterSize = letterBox.getSize();
+        letter.scale.set(SCALE_COEFF, SCALE_COEFF, SCALE_COEFF);
+        letter.position.set(0, 0, 0);
+        const letterMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
+        letter.material = letterMaterial;
+        scene.add(letter);
+        objects.push(letter);
+        //const letterBoxHelper = new THREE.BoxHelper(letter, 0xff0000);
+        // scene.add(letterBoxHelper);
+      }
+      resolve(gltf);
+    });
+  });
+}
+
+function initCannon() {
+  world = new CANNON.World();
+  world.gravity.set(0, 0, 0);
+  world.broadphase = new CANNON.NaiveBroadphase();
+  world.solver.iterations = 10;
+
+  objects.forEach(object => {
+    const meshBoxSize = new THREE.Box3().setFromObject(object).getSize();
+    const shape = new CANNON.Box(
+      new CANNON.Vec3(meshBoxSize.x / 2, meshBoxSize.y / 2, meshBoxSize.z / 2)
+    );
+    const body = new CANNON.Body({
+      mass: 100,
+      position: object.position,
+      quaternion: object.quaternion
+    });
+    body.addShape(shape);
+    world.addBody(body);
+    bodies.push(body);
+  });
+}
+
+function onClick() {
+  bodies.forEach(body => {
+    body.angularVelocity.set(
+      Math.random() * VELOCITY_COEFF,
+      Math.random() * VELOCITY_COEFF,
+      Math.random() * VELOCITY_COEFF
+    );
+    body.angularDamping = 0.5;
+  });
+}
+
+function initCannonWalls() {
+  walls.forEach(wall => {
+    const wallShape = new CANNON.Plane();
+    const wallBody = new CANNON.Body({
+      mass: 0,
+      position: wall.position,
+      quaternion: wall.quaternion
+    });
+    wallBody.addShape(wallShape);
+    world.addBody(wallBody);
+    wallBodies.push(wallBody);
+  });
+}
+
+function updatePhysics() {
+  world.step(TIME_STEP);
+  bodies.forEach((body, bodyIndex) => {
+    const object = objects[bodyIndex];
+    object.position.copy(body.position);
+    object.quaternion.copy(body.quaternion);
+  });
+  world.gravity.set(GRAVITY_COEFF * mx, GRAVITY_COEFF * my, 0);
 }
 
 function render() {
   requestAnimationFrame(render);
-  controls.update();
+  if (controls) {
+    controls.update();
+  }
   updatePhysics();
   renderer.render(scene, camera);
 }
 
-init();
+function main() {
+  initCamera();
+  initRenderer();
+  initScene();
+  initWalls();
+  initEventListeners();
+  initControls();
+  loadModel().then(() => {
+    initCannon();
+    initCannonWalls();
+    render();
+  });
+}
+
+main();
