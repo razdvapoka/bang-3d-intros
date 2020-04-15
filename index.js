@@ -271,8 +271,8 @@ function onClick() {
     );
     body.angularDamping = 0.5;
     body.velocity.set(
-      Math.random() * Math.sign(-mx) * ANGULAR_VELOCITY_COEFF * 2,
-      Math.random() * Math.sign(-my) * ANGULAR_VELOCITY_COEFF * 2,
+      Math.random() * -mx * VELOCITY_COEFF,
+      Math.random() * -my * VELOCITY_COEFF,
       Math.random() * ANGULAR_VELOCITY_COEFF
     );
   });
