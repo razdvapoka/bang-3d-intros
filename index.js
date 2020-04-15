@@ -225,7 +225,7 @@ function loadModel() {
       for (let i = 0; i < 15; i++) {
         const letter = gltf.scene.children[1].clone();
         const letterBox = new THREE.Box3().setFromObject(letter);
-        const letterSize = letterBox.getSize();
+        const letterSize = letterBox.getSize(new THREE.Vector3());
         letter.scale.set(SCALE_COEFF, SCALE_COEFF, SCALE_COEFF);
         letter.position.set(0, 0, 0);
         const letterMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
@@ -247,7 +247,7 @@ function initCannon() {
   world.solver.iterations = 10;
 
   objects.forEach(object => {
-    const meshBoxSize = new THREE.Box3().setFromObject(object).getSize();
+    const meshBoxSize = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
     const shape = new CANNON.Box(
       new CANNON.Vec3(meshBoxSize.x / 2, meshBoxSize.y / 2, meshBoxSize.z / 2)
     );
