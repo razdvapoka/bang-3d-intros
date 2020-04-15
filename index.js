@@ -16,6 +16,7 @@ let bodies = [];
 let wallBodies = [];
 let mx = 0;
 let my = 0;
+let gravityTimeout;
 
 const DEBUG = false;
 const FACTOR = 70;
@@ -25,7 +26,9 @@ const WALL_WIDTH = 0.01;
 const SCALE_COEFF = 0.002;
 const TIME_STEP = 1 / 60;
 const GRAVITY_COEFF = 100;
-const VELOCITY_COEFF = 20;
+const ANGULAR_VELOCITY_COEFF = 30;
+const VELOCITY_COEFF = 60;
+const GRAVITY_RESET_TIMEOUT = 5000;
 
 function initCamera() {
   camera = new THREE.OrthographicCamera(
@@ -110,6 +113,20 @@ function onMouseMove(e) {
   const y = (e.clientY / window.innerHeight) * 2 - 1;
   mx = x;
   my = -y;
+  if (gravityTimeout) {
+    window.clearTimeout(gravityTimeout);
+  }
+  gravityTimeout = window.setTimeout(() => {
+    mx = 0;
+    my = 0;
+    bodies.forEach(body => {
+      body.velocity.set(
+        Math.random() * Math.sign(-mx) * VELOCITY_COEFF,
+        Math.random() * Math.sign(-my) * VELOCITY_COEFF,
+        Math.random() * VELOCITY_COEFF
+      );
+    });
+  }, GRAVITY_RESET_TIMEOUT);
 }
 
 function initEventListeners() {
@@ -122,7 +139,7 @@ function initWall(width, height, position) {
   var geometry = new THREE.BoxBufferGeometry(width, height, WALL_WIDTH);
   const material = new THREE.MeshPhongMaterial({
     color: 0x00ffff,
-    opacity: 0.5,
+    opacity: 0.2,
     transparent: true,
     side: THREE.DoubleSide
   });
@@ -248,12 +265,19 @@ function initCannon() {
 function onClick() {
   bodies.forEach(body => {
     body.angularVelocity.set(
-      Math.random() * VELOCITY_COEFF,
-      Math.random() * VELOCITY_COEFF,
-      Math.random() * VELOCITY_COEFF
+      Math.random() * ANGULAR_VELOCITY_COEFF,
+      Math.random() * ANGULAR_VELOCITY_COEFF,
+      Math.random() * ANGULAR_VELOCITY_COEFF
     );
     body.angularDamping = 0.5;
+    body.velocity.set(
+      Math.random() * Math.sign(-mx) * ANGULAR_VELOCITY_COEFF * 2,
+      Math.random() * Math.sign(-my) * ANGULAR_VELOCITY_COEFF * 2,
+      Math.random() * ANGULAR_VELOCITY_COEFF
+    );
   });
+  mx = 0;
+  my = 0;
 }
 
 function initCannonWalls() {
