@@ -428,6 +428,7 @@ function initGUI() {
   debugController.onChange(onDebugChange);
   const lightHelperController = gui.add(state, "lightHelper", false, true).name("light helper");
   lightHelperController.onChange(onLightHelperChange);
+  gui.addColor(new ColorGUIHelper(scene, "background"), "value").name("background color");
   gui.close();
 }
 
