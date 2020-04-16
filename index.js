@@ -3,7 +3,7 @@ import * as THREE from "three";
 import * as CANNON from "cannon";
 import * as dat from "dat.gui";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import modelUrl from "./models/b.glb";
+import modelUrl from "./models/letters.glb";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 let camera;
@@ -18,6 +18,8 @@ let objects = [];
 let walls = [];
 let bodies = [];
 let wallBodies = [];
+let logo;
+let logoBody;
 let mx = 0;
 let my = 0;
 let gravityTimeout;
@@ -75,7 +77,7 @@ function initControls() {
 function initScene() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(state.debug ? 0xffffff : 0x000000);
-  ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
   directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
   directionalLight.position.set(-200, -200, 100);
@@ -121,6 +123,8 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   initWalls();
   updateCannonWalls();
+  logo.position.set(window.innerWidth / -FACTOR + 1.5, window.innerHeight / FACTOR - 1.5, 0);
+  logoBody.position.copy(logo.position);
 }
 
 function onMouseMove(e) {
@@ -239,19 +243,29 @@ function loadModel() {
   return new Promise(resolve => {
     var loader = new GLTFLoader();
     loader.load(modelUrl, function(gltf) {
-      for (let i = 0; i < 15; i++) {
-        const letter = gltf.scene.children[1].clone();
+      const meshes = gltf.scene.children.filter(child => child.type === "Mesh");
+      meshes.forEach(mesh => {
+        const letter = mesh;
         const letterBox = new THREE.Box3().setFromObject(letter);
         const letterSize = letterBox.getSize(new THREE.Vector3());
         letter.scale.set(SCALE_COEFF, SCALE_COEFF, SCALE_COEFF);
-        letter.position.set(0, 0, 0);
         const letterMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
         letter.material = letterMaterial;
         scene.add(letter);
-        objects.push(letter);
+        if (letter.name === "Logo") {
+          letter.position.set(
+            window.innerWidth / -FACTOR + 1.5,
+            window.innerHeight / FACTOR - 1.5,
+            0
+          );
+          logo = letter;
+        } else {
+          letter.position.set(0, 0, 0);
+          objects.push(letter);
+        }
         //const letterBoxHelper = new THREE.BoxHelper(letter, 0xff0000);
         // scene.add(letterBoxHelper);
-      }
+      });
       resolve(gltf);
     });
   });
@@ -309,6 +323,20 @@ function initCannonWalls() {
     world.addBody(wallBody);
     wallBodies.push(wallBody);
   });
+}
+
+function initCannonLogo() {
+  const logoBoxSize = new THREE.Box3().setFromObject(logo).getSize(new THREE.Vector3());
+  const logoShape = new CANNON.Box(
+    new CANNON.Vec3(logoBoxSize.x / 2, logoBoxSize.y / 2, logoBoxSize.z / 2)
+  );
+  logoBody = new CANNON.Body({
+    mass: 0,
+    position: logo.position,
+    quaternion: logo.quaternion
+  });
+  logoBody.addShape(logoShape);
+  world.addBody(logoBody);
 }
 
 function updatePhysics() {
@@ -400,6 +428,7 @@ function initGUI() {
   debugController.onChange(onDebugChange);
   const lightHelperController = gui.add(state, "lightHelper", false, true).name("light helper");
   lightHelperController.onChange(onLightHelperChange);
+  gui.close();
 }
 
 function main() {
@@ -412,6 +441,7 @@ function main() {
   loadModel().then(() => {
     initCannon();
     initCannonWalls();
+    initCannonLogo();
     if (GUI) {
       initGUI();
     }
