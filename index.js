@@ -1,6 +1,7 @@
 import "defaults.css";
 import * as THREE from "three";
 import * as CANNON from "cannon";
+import * as dat from "dat.gui";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import modelUrl from "./models/b.glb";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -8,6 +9,9 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 let camera;
 let renderer;
 let scene;
+let ambientLight;
+let directionalLight;
+let directionalLightHelper;
 let controls;
 let world;
 let objects = [];
@@ -17,8 +21,15 @@ let wallBodies = [];
 let mx = 0;
 let my = 0;
 let gravityTimeout;
+let axesHelper;
+let state = {
+  followMouse: true,
+  updatePhysics: true,
+  debug: false,
+  controlsEnabled: false,
+  lightHelper: false
+};
 
-const DEBUG = false;
 const FACTOR = 70;
 const CUBE_SIZE = 10;
 const ROOM_DEPTH = 20;
@@ -29,6 +40,7 @@ const GRAVITY_COEFF = 100;
 const ANGULAR_VELOCITY_COEFF = 30;
 const VELOCITY_COEFF = 60;
 const GRAVITY_RESET_TIMEOUT = 5000;
+const GUI = true;
 
 function initCamera() {
   camera = new THREE.OrthographicCamera(
@@ -54,24 +66,27 @@ function initRenderer() {
 }
 
 function initControls() {
-  if (DEBUG) {
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0, -10);
-    controls.update();
-  }
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, -10);
+  controls.enabled = state.controlsEnabled;
+  controls.update();
 }
 
 function initScene() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(DEBUG ? 0xffffff : 0x000000);
-  var ambient = new THREE.AmbientLight(0xffffff, 0.9);
-  scene.add(ambient);
-  var directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
-  directionalLight.position.set(-1000, -1000, 250);
+  scene.background = new THREE.Color(state.debug ? 0xffffff : 0x000000);
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+  scene.add(ambientLight);
+  directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
+  directionalLight.position.set(-200, -200, 100);
   directionalLight.castShadow = true;
+  directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 20);
+  if (state.directionalLightHelper) {
+    scene.add(directionalLightHelper);
+  }
   scene.add(directionalLight);
-  if (DEBUG) {
-    const axesHelper = new THREE.AxesHelper(5000);
+  axesHelper = new THREE.AxesHelper(5000);
+  if (state.debug) {
     scene.add(axesHelper);
   }
 }
@@ -109,24 +124,26 @@ function onWindowResize() {
 }
 
 function onMouseMove(e) {
-  const x = (e.clientX / window.innerWidth) * 2 - 1;
-  const y = (e.clientY / window.innerHeight) * 2 - 1;
-  mx = x;
-  my = -y;
-  if (gravityTimeout) {
-    window.clearTimeout(gravityTimeout);
+  if (state.followMouse) {
+    const x = (e.clientX / window.innerWidth) * 2 - 1;
+    const y = (e.clientY / window.innerHeight) * 2 - 1;
+    mx = x;
+    my = -y;
+    if (gravityTimeout) {
+      window.clearTimeout(gravityTimeout);
+    }
+    gravityTimeout = window.setTimeout(() => {
+      mx = 0;
+      my = 0;
+      bodies.forEach(body => {
+        body.velocity.set(
+          Math.random() * Math.sign(-mx) * VELOCITY_COEFF,
+          Math.random() * Math.sign(-my) * VELOCITY_COEFF,
+          Math.random() * VELOCITY_COEFF
+        );
+      });
+    }, GRAVITY_RESET_TIMEOUT);
   }
-  gravityTimeout = window.setTimeout(() => {
-    mx = 0;
-    my = 0;
-    bodies.forEach(body => {
-      body.velocity.set(
-        Math.random() * Math.sign(-mx) * VELOCITY_COEFF,
-        Math.random() * Math.sign(-my) * VELOCITY_COEFF,
-        Math.random() * VELOCITY_COEFF
-      );
-    });
-  }, GRAVITY_RESET_TIMEOUT);
 }
 
 function initEventListeners() {
@@ -213,7 +230,7 @@ function initWalls() {
   front.rotateX(Math.PI);
   walls.push(front);
 
-  if (DEBUG) {
+  if (state.debug) {
     walls.forEach(wall => scene.add(wall));
   }
 }
@@ -309,8 +326,80 @@ function render() {
   if (controls) {
     controls.update();
   }
-  updatePhysics();
+  if (state.updatePhysics) {
+    updatePhysics();
+  }
+  if (state.lightHelper) {
+    directionalLight.updateMatrixWorld();
+    directionalLightHelper.position.setFromMatrixPosition(directionalLight.matrixWorld);
+    directionalLightHelper.updateMatrix();
+    directionalLightHelper.update();
+  }
   renderer.render(scene, camera);
+}
+
+class ColorGUIHelper {
+  constructor(object, prop) {
+    this.object = object;
+    this.prop = prop;
+  }
+  get value() {
+    return `#${this.object[this.prop].getHexString()}`;
+  }
+  set value(hexString) {
+    this.object[this.prop].set(hexString);
+  }
+}
+
+function onLightHelperChange(value) {
+  if (value) {
+    scene.add(directionalLightHelper);
+  } else {
+    scene.remove(directionalLightHelper);
+  }
+}
+
+function onControlsEnabledChange(value) {
+  if (!value) {
+    controls.reset();
+  }
+}
+
+function onDebugChange(value) {
+  if (value) {
+    scene.add(axesHelper);
+    scene.background = new THREE.Color(0xffffff);
+    walls.forEach(wall => scene.add(wall));
+  } else {
+    scene.remove(axesHelper);
+    scene.background = new THREE.Color(0x000000);
+    walls.forEach(wall => scene.remove(wall));
+    controls.reset();
+    controls.enabled = false;
+  }
+}
+
+function initGUI() {
+  const gui = new dat.GUI();
+  const ambientFolder = gui.addFolder("ambient light");
+  ambientFolder.addColor(new ColorGUIHelper(ambientLight, "color"), "value").name("color");
+  ambientFolder.add(ambientLight, "intensity", 0, 2, 0.01);
+  ambientFolder.open();
+  const directionalFolder = gui.addFolder("directional light");
+  directionalFolder.addColor(new ColorGUIHelper(directionalLight, "color"), "value").name("color");
+  directionalFolder.add(directionalLight, "intensity", 0, 2, 0.01);
+  directionalFolder.add(directionalLight.position, "x", -200, 200, 1);
+  directionalFolder.add(directionalLight.position, "y", -200, 200, 1);
+  directionalFolder.add(directionalLight.position, "z", -200, 200, 1);
+  directionalFolder.open();
+  gui.add(state, "followMouse", false, true);
+  gui.add(state, "updatePhysics", false, true);
+  const controlsEnabledController = gui.add(controls, "enabled", false, true).name("controls");
+  controlsEnabledController.onChange(onControlsEnabledChange);
+  const debugController = gui.add(state, "debug", false, true);
+  debugController.onChange(onDebugChange);
+  const lightHelperController = gui.add(state, "lightHelper", false, true).name("light helper");
+  lightHelperController.onChange(onLightHelperChange);
 }
 
 function main() {
@@ -323,6 +412,9 @@ function main() {
   loadModel().then(() => {
     initCannon();
     initCannonWalls();
+    if (GUI) {
+      initGUI();
+    }
     render();
   });
 }
