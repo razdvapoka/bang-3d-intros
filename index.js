@@ -80,7 +80,7 @@ function initScene() {
   ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
   directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
-  directionalLight.position.set(-200, -200, 100);
+  directionalLight.position.set(20, 10, 20);
   directionalLight.castShadow = true;
   directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 20);
   if (state.directionalLightHelper) {
