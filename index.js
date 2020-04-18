@@ -12,6 +12,8 @@ let scene;
 let ambientLight;
 let directionalLight;
 let directionalLightHelper;
+let directionalLightShadowCamera;
+let directionalLightShadowCameraHelper;
 let controls;
 let world;
 let objects = [];
@@ -62,6 +64,7 @@ function initRenderer() {
     alpha: true,
     logarithmicDepthBuffer: false
   });
+  renderer.shadowMap.enabled = true;
   renderer.setClearColor(0xffffff);
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
@@ -79,14 +82,31 @@ function initScene() {
   scene.background = new THREE.Color(state.debug ? 0xffffff : 0x000000);
   ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
+
   directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
   directionalLight.position.set(20, 10, 20);
   directionalLight.castShadow = true;
+  directionalLightShadowCamera = directionalLight.shadow.camera;
+  directionalLightShadowCamera.left = (2 * window.innerWidth) / -FACTOR;
+  directionalLightShadowCamera.right = (2 * window.innerWidth) / FACTOR;
+  directionalLightShadowCamera.top = (2 * window.innerHeight) / FACTOR;
+  directionalLightShadowCamera.bottom = (2 * window.innerHeight) / -FACTOR;
+  directionalLightShadowCamera.near = -50;
+  directionalLightShadowCamera.far = 50;
+  directionalLightShadowCamera.updateProjectionMatrix();
+  directionalLight.shadow.mapSize.x = 2048;
+  directionalLight.shadow.mapSize.y = 2048;
+  scene.add(directionalLight);
+
   directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 20);
+  directionalLightShadowCameraHelper = new THREE.CameraHelper(directionalLight.shadow.camera);
+  directionalLightShadowCameraHelper.update();
+
   if (state.directionalLightHelper) {
     scene.add(directionalLightHelper);
+    scene.add(directionalLightShadowCameraHelper);
   }
-  scene.add(directionalLight);
+
   axesHelper = new THREE.AxesHelper(5000);
   if (state.debug) {
     scene.add(axesHelper);
@@ -251,6 +271,8 @@ function loadModel() {
         letter.scale.set(SCALE_COEFF, SCALE_COEFF, SCALE_COEFF);
         const letterMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
         letter.material = letterMaterial;
+        letter.castShadow = true;
+        letter.receiveShadow = true;
         scene.add(letter);
         if (letter.name === "Logo") {
           letter.position.set(
@@ -382,8 +404,10 @@ class ColorGUIHelper {
 function onLightHelperChange(value) {
   if (value) {
     scene.add(directionalLightHelper);
+    scene.add(directionalLightShadowCameraHelper);
   } else {
     scene.remove(directionalLightHelper);
+    scene.remove(directionalLightShadowCameraHelper);
   }
 }
 
@@ -405,6 +429,13 @@ function onDebugChange(value) {
     controls.reset();
     controls.enabled = false;
   }
+}
+
+function onShadowsChange(value) {
+  objects.forEach(object => {
+    object.castShadow = value;
+    object.receiveShadow = value;
+  });
 }
 
 function initGUI() {
@@ -429,6 +460,10 @@ function initGUI() {
   const lightHelperController = gui.add(state, "lightHelper", false, true).name("light helper");
   lightHelperController.onChange(onLightHelperChange);
   gui.addColor(new ColorGUIHelper(scene, "background"), "value").name("background color");
+  gui
+    .add(renderer.shadowMap, "enabled", false, true)
+    .name("shadows")
+    .onChange(onShadowsChange);
   gui.close();
 }
 
