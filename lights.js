@@ -62,6 +62,7 @@ const darkMaterial = new THREE.MeshBasicMaterial({ color: "black" });
 const materials = {};
 
 var params = {
+  isRotating: true,
   exposure: 1,
   bloomStrength: 5,
   bloomThreshold: 0,
@@ -198,10 +199,12 @@ function render() {
   }
   window.requestAnimationFrame(() => {
     render();
-    vines.forEach((vine, vineIndex) => {
-      vine.rotation.y += 0.01;
-      columns[vineIndex].rotation.y += 0.01;
-    });
+    if (params.isRotating) {
+      vines.forEach((vine, vineIndex) => {
+        vine.rotation.y += 0.01;
+        columns[vineIndex].rotation.y += 0.01;
+      });
+    }
   });
 }
 
@@ -281,6 +284,7 @@ function initGUI() {
     });
     // render();
   });
+  objFolder.open();
 
   var folder = gui.addFolder("Bloom Parameters");
 
@@ -306,6 +310,8 @@ function initGUI() {
       bloomPass.radius = Number(value);
       // render();
     });
+  folder.open();
+  gui.add(params, "isRotating", false, true);
 }
 
 function initCamera() {
